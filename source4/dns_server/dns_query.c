@@ -30,7 +30,7 @@
 #include "dsdb/samdb/samdb.h"
 #include "dsdb/common/util.h"
 #include "dns_server/dns_server.h"
-#include "libcli/dns/libdns.h"
+#include "libcli/dns/libudp.h"
 #include "lib/util/dlinklist.h"
 #include "lib/util/util_net.h"
 #include "lib/util/tevent_werror.h"
