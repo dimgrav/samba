@@ -31,11 +31,34 @@
 #include <cmocka.h>
 #include "libcli/dns/cli-fn/dns_tcp.c"
 
+/* DNS call send/recv() */
+#include "replace.h"
+#include "system/network.h"
+#include <tevent.h>
+#include "lib/tsocket/tsocket.h"
+#include "libcli/util/tstream.h"
+#include "source4/smbd/service_task.h"
+#include "source4/smbd/service_stream.h"
+#include "source4/lib/stream/packet.h"
+#include "librpc/ndr/libndr.h"
+#include "librpc/gen_ndr/dns.h"
+#include "librpc/gen_ndr/ndr_dns.h"
+#include "librpc/gen_ndr/ndr_dnsp.h"
+#include "lib/tsocket/tsocket.h"
+#include "libcli/dns/libudp.h"
+#include "libcli/dns/libtcp.h"
+#include "lib/util/tevent_unix.h"
+#include "lib/util/tevent_werror.h"
+#include "lib/util/samba_util.h"
+#include "libcli/util/error.h"
+
+#define DNS_REQUEST_TIMEOUT 2
+
 
 /** test tcp send/recv functionality **/
 
 /* calls fail() if TCP test_req is NULL */
-static void test_req_send(void **state)
+void test_req_send(void **state)
 {
 	TALLOC_CTX *mem_ctx;
 	struct tevent_context *test_ev;
@@ -52,7 +75,7 @@ static void test_req_send(void **state)
 }
 
 /* calls fail() if test_subreq is NULL */
-static void test_req_recv_reply(void **state)
+void test_req_recv_reply(void **state)
 {
 	struct tevent_req *test_subreq;
 	assert_non_null(test_subreq);
@@ -61,7 +84,7 @@ static void test_req_recv_reply(void **state)
 }
 
 /* calls fail() if test_subreq is NULL */
-static void test_req_done(void **state)
+void test_req_done(void **state)
 {
 	struct tevent_req *test_subreq;
 	assert_non_null(test_subreq);
@@ -70,7 +93,7 @@ static void test_req_done(void **state)
 }
 
 /* calls fail() if test_rcv is not 0 */
-static void test_req_recv(void **state)
+void test_req_recv(void **state)
 {
 	TALLOC_CTX *mem_ctx;
 	struct tevent_req *test_req;
