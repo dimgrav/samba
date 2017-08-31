@@ -36,7 +36,7 @@
  * make a copy of the original tsig record
  * with null rdata values
  */
-static WERROR dns_empty_tsig(TALLOC_CTX *mem_ctx,
+WERROR dns_empty_tsig(TALLOC_CTX *mem_ctx,
 					struct dns_res_rec *orig_record,
 					struct dns_res_rec *empty_record)
 {
