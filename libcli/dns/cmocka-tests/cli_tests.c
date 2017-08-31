@@ -76,7 +76,7 @@
 /** test tcp send/recv functionality **/
 
 /* calls fail() if TCP test_req is NULL */
-static void test_req_send(void **state)
+void test_req_send(void **state)
 {
 	/* incomplete */
 	TALLOC_CTX *mem_ctx;
@@ -94,7 +94,7 @@ static void test_req_send(void **state)
 }
 
 /* calls fail() if test_subreq is NULL */
-static void test_req_recv_reply(void **state)
+void test_req_recv_reply(void **state)
 {
 	struct tevent_req *test_subreq;
 	assert_non_null(test_subreq);
@@ -103,7 +103,7 @@ static void test_req_recv_reply(void **state)
 }
 
 /* calls fail() if test_subreq is NULL */
-static void test_req_done(void **state)
+void test_req_done(void **state)
 {
 	struct tevent_req *test_subreq;
 	assert_non_null(test_subreq);
@@ -112,7 +112,7 @@ static void test_req_done(void **state)
 }
 
 /* calls fail() if test_rcv is not 0 */
-static void test_req_recv(void **state)
+void test_req_recv(void **state)
 {
 	TALLOC_CTX *mem_ctx;
 	struct tevent_req *test_req;
@@ -129,7 +129,7 @@ static void test_req_recv(void **state)
 /** test udp send/recv functionality **/
 
 /* calls fail() if UDP test_req is NULL */
-static void test_request_send(void **state)
+void test_request_send(void **state)
 {
 	TALLOC_CTX *mem_ctx;
 	struct tevent_context *test_ev;
@@ -146,7 +146,7 @@ static void test_request_send(void **state)
 }
 
 /* calls fail() if test_subreq is NULL */
-static void test_request_get_reply(void **state)
+void test_request_get_reply(void **state)
 {
 	struct tevent_req *test_subreq;
 	assert_non_null(test_subreq);
@@ -155,7 +155,7 @@ static void test_request_get_reply(void **state)
 }
 
 /* calls fail() if test_subreq is NULL */
-static void test_request_done(void **state)
+void test_request_done(void **state)
 {
 	struct tevent_req *test_subreq;
 	assert_non_null(test_subreq);
@@ -164,7 +164,7 @@ static void test_request_done(void **state)
 }
 
 /* calls fail() if test_rcv is not 0 */
-static void test_request_recv(void **state)
+void test_request_recv(void **state)
 {
 	struct tevent_req *test_req;
 	TALLOC_CTX *mem_ctx;
@@ -181,7 +181,7 @@ static void test_request_recv(void **state)
 /** test gss-tsig functionality **/
 
 /* helper struct functions */
-static struct dns_res_rec *test_record(void) {
+struct dns_res_rec *test_record(void) {
 
 	TALLOC_CTX *mem_ctx;
 	struct dns_res_rec *test_rec;
@@ -205,7 +205,7 @@ static struct dns_res_rec *test_record(void) {
 	return test_rec;
 };
 
-static struct dns_client_tkey *test_tkey_name(void) {
+struct dns_client_tkey *test_tkey_name(void) {
 	
 	struct dns_client_tkey *test_tkey = NULL;
 	test_tkey->name = "TEST_TKEY";
@@ -214,7 +214,7 @@ static struct dns_client_tkey *test_tkey_name(void) {
 };
 
 /* calls fail() if assertions are false */
-static void tkey_test(void **state)
+void tkey_test(void **state)
 {
 	struct dns_client_tkey_store *test_store;
 	const char *test_name = "TEST_TKEY";
@@ -235,7 +235,7 @@ static void tkey_test(void **state)
 }
 
 /* calls fail() if test_werr not in werr_set */
-static void gen_tsig_test(void **state)
+void gen_tsig_test(void **state)
 {
 	TALLOC_CTX *mem_ctx;
 	DATA_BLOB *in_test = {NULL, SIZE_MAX};
