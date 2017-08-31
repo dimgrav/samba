@@ -1178,7 +1178,7 @@ static WERROR getncchanges_repl_secret(struct drsuapi_bind_state *b_state,
 	if (b_state->sam_ctx_system == NULL) {
 		/* this operation needs system level access */
 		ctr6->extended_ret = DRSUAPI_EXOP_ERR_ACCESS_DENIED;
-		return WERR_DS_DRA_SOURCE_DISABLED;
+		return WERR_DS_DRA_ACCESS_DENIED;
 	}
 
 	/*
@@ -2043,6 +2043,7 @@ WERROR dcesrv_drsuapi_DsGetNCChanges(struct dcesrv_call_state *dce_call, TALLOC_
 	DCESRV_PULL_HANDLE_WERR(h, r->in.bind_handle, DRSUAPI_BIND_HANDLE);
 	b_state = h->data;
 
+	/* sam_ctx_system is not present for non-administrator users */
 	sam_ctx = b_state->sam_ctx_system?b_state->sam_ctx_system:b_state->sam_ctx;
 
 	invocation_id = *(samdb_ntds_invocation_id(sam_ctx));
@@ -2107,7 +2108,7 @@ WERROR dcesrv_drsuapi_DsGetNCChanges(struct dcesrv_call_state *dce_call, TALLOC_
 	user_sid = &dce_call->conn->auth_state.session_info->security_token->sids[PRIMARY_USER_SID_INDEX];
 
 	/* all clients must have GUID_DRS_GET_CHANGES */
-	werr = drs_security_access_check_nc_root(b_state->sam_ctx,
+	werr = drs_security_access_check_nc_root(sam_ctx,
 						 mem_ctx,
 						 dce_call->conn->auth_state.session_info->security_token,
 						 req10->naming_context,
@@ -2149,7 +2150,7 @@ WERROR dcesrv_drsuapi_DsGetNCChanges(struct dcesrv_call_state *dce_call, TALLOC_
 		return werr;
 	}
 	if (is_gc_pas_request) {
-		werr = drs_security_access_check_nc_root(b_state->sam_ctx,
+		werr = drs_security_access_check_nc_root(sam_ctx,
 							 mem_ctx,
 							 dce_call->conn->auth_state.session_info->security_token,
 							 req10->naming_context,
@@ -2166,7 +2167,7 @@ WERROR dcesrv_drsuapi_DsGetNCChanges(struct dcesrv_call_state *dce_call, TALLOC_
 		return werr;
 	}
 	if (is_secret_request) {
-		werr = drs_security_access_check_nc_root(b_state->sam_ctx,
+		werr = drs_security_access_check_nc_root(sam_ctx,
 							 mem_ctx,
 							 dce_call->conn->auth_state.session_info->security_token,
 							 req10->naming_context,
@@ -2220,8 +2221,8 @@ allowed:
 				 ldb_dn_get_linearized(new_dn),
 				 ldb_dn_get_linearized(getnc_state->ncRoot_dn),
 				 ldb_dn_get_linearized(getnc_state->last_dn)));
-			talloc_free(getnc_state);
-			getnc_state = NULL;
+			TALLOC_FREE(getnc_state);
+			b_state->getncchanges_state = NULL;
 		}
 	}
 
@@ -2234,37 +2235,38 @@ allowed:
 				 ldb_dn_get_linearized(getnc_state->ncRoot_dn),
 				 (ret > 0) ? "older" : "newer",
 				 ldb_dn_get_linearized(getnc_state->last_dn)));
-			talloc_free(getnc_state);
-			getnc_state = NULL;
+			TALLOC_FREE(getnc_state);
+			b_state->getncchanges_state = NULL;
 		}
 	}
 
 	if (getnc_state == NULL) {
-		getnc_state = talloc_zero(b_state, struct drsuapi_getncchanges_state);
-		if (getnc_state == NULL) {
-			return WERR_NOT_ENOUGH_MEMORY;
-		}
-		b_state->getncchanges_state = getnc_state;
-		getnc_state->ncRoot_dn = drs_ObjectIdentifier_to_dn(getnc_state, sam_ctx, ncRoot);
-		if (getnc_state->ncRoot_dn == NULL) {
+		struct ldb_result *res = NULL;
+		const char *attrs[] = {
+			"instanceType",
+			"objectGuID",
+			NULL
+		};
+		uint32_t nc_instanceType;
+		struct ldb_dn *ncRoot_dn;
+
+		ncRoot_dn = drs_ObjectIdentifier_to_dn(mem_ctx, sam_ctx, ncRoot);
+		if (ncRoot_dn == NULL) {
 			return WERR_NOT_ENOUGH_MEMORY;
 		}
 
-		ret = dsdb_find_guid_by_dn(b_state->sam_ctx_system,
-					   getnc_state->ncRoot_dn,
-					   &getnc_state->ncRoot_guid);
+		ret = dsdb_search_dn(sam_ctx, mem_ctx, &res,
+				     ncRoot_dn, attrs,
+				     DSDB_SEARCH_SHOW_DELETED |
+				     DSDB_SEARCH_SHOW_RECYCLED);
 		if (ret != LDB_SUCCESS) {
-			DEBUG(0,(__location__ ": Failed to find GUID of ncRoot_dn %s\n",
-				 ldb_dn_get_linearized(getnc_state->ncRoot_dn)));
-			return WERR_DS_DRA_INTERNAL_ERROR;
+			DBG_WARNING("Failed to find ncRoot_dn %s\n",
+				    ldb_dn_get_linearized(ncRoot_dn));
+			return WERR_DS_DRA_BAD_DN;
 		}
-		ncRoot->guid = getnc_state->ncRoot_guid;
-
-		/* find out if we are to replicate Schema NC */
-		ret = ldb_dn_compare_base(ldb_get_schema_basedn(b_state->sam_ctx),
-					  getnc_state->ncRoot_dn);
-
-		getnc_state->is_schema_nc = (0 == ret);
+		nc_instanceType = ldb_msg_find_attr_as_int(res->msgs[0],
+							   "instanceType",
+							   0);
 
 		if (req10->extended_op != DRSUAPI_EXOP_NONE) {
 			r->out.ctr->ctr6.extended_ret = DRSUAPI_EXOP_ERR_SUCCESS;
@@ -2278,6 +2280,16 @@ allowed:
 		 */
 		switch (req10->extended_op) {
 		case DRSUAPI_EXOP_NONE:
+			if ((nc_instanceType & INSTANCE_TYPE_IS_NC_HEAD) == 0) {
+				const char *dn_str
+					= ldb_dn_get_linearized(ncRoot_dn);
+
+				DBG_NOTICE("Rejecting full replication on "
+					   "not NC %s", dn_str);
+
+				return WERR_DS_CANT_FIND_EXPECTED_NC;
+			}
+
 			break;
 		case DRSUAPI_EXOP_FSMO_RID_ALLOC:
 			werr = getncchanges_rid_alloc(b_state, mem_ctx, req10, &r->out.ctr->ctr6, &search_dn);
@@ -2328,6 +2340,27 @@ allowed:
 				 (unsigned)req10->extended_op));
 			return WERR_DS_DRA_NOT_SUPPORTED;
 		}
+
+		/* Initialize the state we'll store over the replication cycle */
+		getnc_state = talloc_zero(b_state, struct drsuapi_getncchanges_state);
+		if (getnc_state == NULL) {
+			return WERR_NOT_ENOUGH_MEMORY;
+		}
+		b_state->getncchanges_state = getnc_state;
+
+		getnc_state->ncRoot_dn = ncRoot_dn;
+		talloc_steal(getnc_state, ncRoot_dn);
+
+		getnc_state->ncRoot_guid = samdb_result_guid(res->msgs[0],
+							     "objectGUID");
+		ncRoot->guid = getnc_state->ncRoot_guid;
+
+		/* find out if we are to replicate Schema NC */
+		ret = ldb_dn_compare_base(ldb_get_schema_basedn(sam_ctx),
+					  ncRoot_dn);
+		getnc_state->is_schema_nc = (0 == ret);
+
+		TALLOC_FREE(res);
 	}
 
 	if (!ldb_dn_validate(getnc_state->ncRoot_dn) ||
@@ -2532,7 +2565,7 @@ allowed:
 		struct dsdb_syntax_ctx syntax_ctx;
 		uint32_t j = 0;
 
-		dsdb_syntax_ctx_init(&syntax_ctx, b_state->sam_ctx, schema);
+		dsdb_syntax_ctx_init(&syntax_ctx, sam_ctx, schema);
 		syntax_ctx.pfm_remote = pfm_remote;
 
 		local_pas = talloc_array(b_state, uint32_t, req10->partial_attribute_set->num_attids);
@@ -2832,7 +2865,7 @@ allowed:
 		DEBUG(3,("UpdateRefs on getncchanges for %s\n",
 			 GUID_string(mem_ctx, &req10->destination_dsa_guid)));
 		ureq.naming_context = ncRoot;
-		ureq.dest_dsa_dns_name = samdb_ntds_msdcs_dns_name(b_state->sam_ctx, mem_ctx,
+		ureq.dest_dsa_dns_name = samdb_ntds_msdcs_dns_name(sam_ctx, mem_ctx,
 								   &req10->destination_dsa_guid);
 		if (!ureq.dest_dsa_dns_name) {
 			return WERR_NOT_ENOUGH_MEMORY;

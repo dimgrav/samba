@@ -4256,6 +4256,7 @@ static int control_restoredb(TALLOC_CTX *mem_ctx, struct ctdb_context *ctdb,
 	for (i=0; i<db_hdr.nbuf; i++) {
 		struct ctdb_req_message message;
 		TDB_DATA data;
+		size_t np;
 
 		ret = ctdb_rec_buffer_read(fd, mem_ctx, &recbuf);
 		if (ret != 0) {
@@ -4268,7 +4269,7 @@ static int control_restoredb(TALLOC_CTX *mem_ctx, struct ctdb_context *ctdb,
 			goto failed;
 		}
 
-		ctdb_rec_buffer_push(recbuf, data.dptr);
+		ctdb_rec_buffer_push(recbuf, data.dptr, &np);
 
 		message.srvid = pulldb.srvid;
 		message.data.data = data;
@@ -5281,6 +5282,7 @@ static int control_tstore(TALLOC_CTX *mem_ctx, struct ctdb_context *ctdb,
 	TDB_DATA key, data[2], value;
 	struct ctdb_ltdb_header header;
 	uint8_t header_buf[sizeof(struct ctdb_ltdb_header)];
+	size_t np;
 	int ret;
 
 	if (argc < 3 || argc > 5) {
@@ -5319,9 +5321,9 @@ static int control_tstore(TALLOC_CTX *mem_ctx, struct ctdb_context *ctdb,
 		header.flags = (uint32_t)atol(argv[5]);
 	}
 
-	ctdb_ltdb_header_push(&header, header_buf);
+	ctdb_ltdb_header_push(&header, header_buf, &np);
 
-	data[0].dsize = ctdb_ltdb_header_len(&header);
+	data[0].dsize = np;
 	data[0].dptr = header_buf;
 
 	data[1].dsize = value.dsize;

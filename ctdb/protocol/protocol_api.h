@@ -26,22 +26,24 @@
 
 /* From protocol/protocol_types.c */
 
-size_t ctdb_ltdb_header_len(struct ctdb_ltdb_header *header);
-void ctdb_ltdb_header_push(struct ctdb_ltdb_header *header, uint8_t *buf);
+size_t ctdb_ltdb_header_len(struct ctdb_ltdb_header *in);
+void ctdb_ltdb_header_push(struct ctdb_ltdb_header *in, uint8_t *buf,
+			   size_t *npush);
 int ctdb_ltdb_header_pull(uint8_t *buf, size_t buflen,
-			  struct ctdb_ltdb_header *header);
+			  struct ctdb_ltdb_header *out, size_t *npull);
 
 int ctdb_ltdb_header_extract(TDB_DATA *data, struct ctdb_ltdb_header *header);
 
-size_t ctdb_rec_data_len(struct ctdb_rec_data *rec);
-void ctdb_rec_data_push(struct ctdb_rec_data *rec, uint8_t *buf);
+size_t ctdb_rec_data_len(struct ctdb_rec_data *in);
+void ctdb_rec_data_push(struct ctdb_rec_data *in, uint8_t *buf, size_t *npush);
 int ctdb_rec_data_pull(uint8_t *buf, size_t buflen, TALLOC_CTX *mem_ctx,
-		       struct ctdb_rec_data **out);
+		       struct ctdb_rec_data **out, size_t *npull);
 
-size_t ctdb_rec_buffer_len(struct ctdb_rec_buffer *recbuf);
-void ctdb_rec_buffer_push(struct ctdb_rec_buffer *recbuf, uint8_t *buf);
+size_t ctdb_rec_buffer_len(struct ctdb_rec_buffer *in);
+void ctdb_rec_buffer_push(struct ctdb_rec_buffer *in, uint8_t *buf,
+			  size_t *npush);
 int ctdb_rec_buffer_pull(uint8_t *buf, size_t buflen, TALLOC_CTX *mem_ctx,
-		      struct ctdb_rec_buffer **out);
+			 struct ctdb_rec_buffer **out, size_t *npull);
 
 struct ctdb_rec_buffer *ctdb_rec_buffer_init(TALLOC_CTX *mem_ctx,
 					     uint32_t db_id);
@@ -56,19 +58,22 @@ int ctdb_rec_buffer_write(struct ctdb_rec_buffer *recbuf, int fd);
 int ctdb_rec_buffer_read(int fd, TALLOC_CTX *mem_ctx,
 			 struct ctdb_rec_buffer **out);
 
-size_t ctdb_server_id_len(struct ctdb_server_id *sid);
-void ctdb_server_id_push(struct ctdb_server_id *sid, uint8_t *buf);
+size_t ctdb_server_id_len(struct ctdb_server_id *in);
+void ctdb_server_id_push(struct ctdb_server_id *in, uint8_t *buf,
+			 size_t *npush);
 int ctdb_server_id_pull(uint8_t *buf, size_t buflen,
-			 struct ctdb_server_id *sid);
+			struct ctdb_server_id *out, size_t *npull);
 
-size_t ctdb_g_lock_len(struct ctdb_g_lock *lock);
-void ctdb_g_lock_push(struct ctdb_g_lock *lock, uint8_t *buf);
-int ctdb_g_lock_pull(uint8_t *buf, size_t buflen, struct ctdb_g_lock *lock);
+size_t ctdb_g_lock_len(struct ctdb_g_lock *in);
+void ctdb_g_lock_push(struct ctdb_g_lock *in, uint8_t *buf, size_t *npush);
+int ctdb_g_lock_pull(uint8_t *buf, size_t buflen, struct ctdb_g_lock *out,
+		     size_t *npull);
 
-size_t ctdb_g_lock_list_len(struct ctdb_g_lock_list *lock_list);
-void ctdb_g_lock_list_push(struct ctdb_g_lock_list *lock_list, uint8_t *buf);
+size_t ctdb_g_lock_list_len(struct ctdb_g_lock_list *in);
+void ctdb_g_lock_list_push(struct ctdb_g_lock_list *in, uint8_t *buf,
+			   size_t *npush);
 int ctdb_g_lock_list_pull(uint8_t *buf, size_t buflen, TALLOC_CTX *mem_ctx,
-			  struct ctdb_g_lock_list **out);
+			  struct ctdb_g_lock_list **out, size_t *npull);
 
 /* From protocol/protocol_header.c */
 
@@ -76,10 +81,11 @@ void ctdb_req_header_fill(struct ctdb_req_header *h, uint32_t generation,
 			  uint32_t operation, uint32_t destnode,
 			  uint32_t srcnode, uint32_t reqid);
 
-size_t ctdb_req_header_len(struct ctdb_req_header *h);
-void ctdb_req_header_push(struct ctdb_req_header *h, uint8_t *buf);
+size_t ctdb_req_header_len(struct ctdb_req_header *in);
+void ctdb_req_header_push(struct ctdb_req_header *in, uint8_t *buf,
+			  size_t *npush);
 int ctdb_req_header_pull(uint8_t *buf, size_t buflen,
-			 struct ctdb_req_header *h);
+			 struct ctdb_req_header *out, size_t *npull);
 
 int ctdb_req_header_verify(struct ctdb_req_header *h, uint32_t operation);
 
@@ -629,6 +635,20 @@ int ctdb_req_message_data_pull(uint8_t *buf, size_t buflen,
 			       struct ctdb_req_header *h,
 			       TALLOC_CTX *mem_ctx,
 			       struct ctdb_req_message_data *c);
+
+/* From protocol/protocol_keepalive.c */
+
+size_t ctdb_req_keepalive_len(struct ctdb_req_header *h,
+			      struct ctdb_req_keepalive *c);
+
+int ctdb_req_keepalive_push(struct ctdb_req_header *h,
+			    struct ctdb_req_keepalive *c,
+			    uint8_t *buf, size_t *buflen);
+
+int ctdb_req_keepalive_pull(uint8_t *buf, size_t buflen,
+			    struct ctdb_req_header *h,
+			    TALLOC_CTX *mem_ctx,
+			    struct ctdb_req_keepalive *c);
 
 /* From protocol/protocol_event.c */
 

@@ -32,7 +32,7 @@ from samba import dsdb
 from samba.dcerpc import drsuapi, misc, drsblobs, security
 from samba.ndr import ndr_unpack, ndr_pack
 from samba.drs_utils import drs_DsBind
-
+from samba import gensec
 from ldb import (
     SCOPE_BASE,
     Message,
@@ -49,6 +49,8 @@ class DrsBaseTestCase(SambaToolCmdTest):
 
     def setUp(self):
         super(DrsBaseTestCase, self).setUp()
+        creds = self.get_credentials()
+        creds.set_gensec_features(creds.get_gensec_features() | gensec.FEATURE_SEAL)
 
         # connect to DCs
         url_dc = samba.tests.env_get_var_value("DC1")
@@ -449,6 +451,13 @@ class DrsBaseTestCase(SambaToolCmdTest):
         drs = drsuapi.drsuapi(binding_str, self.get_loadparm(), creds)
         (drs_handle, supported_extensions) = drs_DsBind(drs)
         return (drs, drs_handle)
+
+    def get_partial_attribute_set(self, attids=[drsuapi.DRSUAPI_ATTID_objectClass]):
+        partial_attribute_set = drsuapi.DsPartialAttributeSet()
+        partial_attribute_set.attids = attids
+        partial_attribute_set.num_attids = len(attids)
+        return partial_attribute_set
+
 
 
 class AbstractLink:

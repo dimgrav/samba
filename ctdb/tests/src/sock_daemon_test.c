@@ -54,6 +54,12 @@ static struct sock_socket_funcs dummy_socket_funcs = {
 	.read_recv = dummy_read_recv,
 };
 
+/*
+ * test1
+ *
+ * Check setup without actually running daemon
+ */
+
 static void test1(TALLOC_CTX *mem_ctx, const char *pidfile,
 		  const char *sockpath)
 {
@@ -61,14 +67,13 @@ static void test1(TALLOC_CTX *mem_ctx, const char *pidfile,
 	struct stat st;
 	int ret;
 
-	ret = sock_daemon_setup(mem_ctx, "test1", "file:", "NOTICE", pidfile,
+	ret = sock_daemon_setup(mem_ctx, "test1", "file:", "NOTICE",
 				NULL, NULL, &sockd);
 	assert(ret == 0);
 	assert(sockd != NULL);
 
 	ret = stat(pidfile, &st);
-	assert(ret == 0);
-	assert(S_ISREG(st.st_mode));
+	assert(ret == -1);
 
 	ret = sock_daemon_add_unix(sockd, sockpath, &dummy_socket_funcs, NULL);
 	assert(ret == 0);
@@ -85,6 +90,13 @@ static void test1(TALLOC_CTX *mem_ctx, const char *pidfile,
 	ret = stat(sockpath, &st);
 	assert(ret == -1);
 }
+
+/*
+ * test2
+ *
+ * Start daemon, check PID file, sock daemon functions, termination,
+ * exit code
+ */
 
 static void test2_startup(void *private_data)
 {
@@ -130,6 +142,8 @@ static void test2(TALLOC_CTX *mem_ctx, const char *pidfile,
 	pid_t pid, pid2;
 	int ret;
 	ssize_t n;
+	int pidfile_fd;
+	char pidstr[20] = { 0 };
 
 	ret = pipe(fd);
 	assert(ret == 0);
@@ -147,14 +161,14 @@ static void test2(TALLOC_CTX *mem_ctx, const char *pidfile,
 		assert(ev != NULL);
 
 		ret = sock_daemon_setup(mem_ctx, "test2", "file:", "NOTICE",
-					pidfile, &test2_funcs, &fd[1], &sockd);
+					&test2_funcs, &fd[1], &sockd);
 		assert(ret == 0);
 
 		ret = sock_daemon_add_unix(sockd, sockpath,
 					   &dummy_socket_funcs, NULL);
 		assert(ret == 0);
 
-		ret = sock_daemon_run(ev, sockd, -1);
+		ret = sock_daemon_run(ev, sockd, pidfile, false, false, -1);
 		assert(ret == EINTR);
 
 		exit(0);
@@ -165,6 +179,17 @@ static void test2(TALLOC_CTX *mem_ctx, const char *pidfile,
 	n = read(fd[0], &ret, sizeof(ret));
 	assert(n == sizeof(ret));
 	assert(ret == 1);
+
+	ret = stat(pidfile, &st);
+	assert(ret == 0);
+	assert(S_ISREG(st.st_mode));
+
+	pidfile_fd = open(pidfile, O_RDONLY, 0644);
+	assert(pidfile_fd != -1);
+	n = read(pidfile_fd, pidstr, sizeof(pidstr)-1);
+	assert(n != -1);
+	pid2 = (pid_t)atoi(pidstr);
+	assert(pid == pid2);
 
 	ret = kill(pid, SIGHUP);
 	assert(ret == 0);
@@ -200,6 +225,12 @@ static void test2(TALLOC_CTX *mem_ctx, const char *pidfile,
 	assert(ret == -1);
 }
 
+/*
+ * test3
+ *
+ * Start daemon, test watching of (parent) PID
+ */
+
 static void test3(TALLOC_CTX *mem_ctx, const char *pidfile,
 		  const char *sockpath)
 {
@@ -226,14 +257,14 @@ static void test3(TALLOC_CTX *mem_ctx, const char *pidfile,
 		assert(ev != NULL);
 
 		ret = sock_daemon_setup(mem_ctx, "test3", "file:", "NOTICE",
-					NULL, NULL, NULL, &sockd);
+					NULL, NULL, &sockd);
 		assert(ret == 0);
 
 		ret = sock_daemon_add_unix(sockd, sockpath,
 					   &dummy_socket_funcs, NULL);
 		assert(ret == 0);
 
-		ret = sock_daemon_run(ev, sockd, pid_watch);
+		ret = sock_daemon_run(ev, sockd, NULL, false, false, pid_watch);
 		assert(ret == ESRCH);
 
 		exit(0);
@@ -253,6 +284,12 @@ static void test3(TALLOC_CTX *mem_ctx, const char *pidfile,
 	ret = stat(sockpath, &st);
 	assert(ret == -1);
 }
+
+/*
+ * test4
+ *
+ * Start daemon, test termination via wait_send function
+ */
 
 struct test4_wait_state {
 };
@@ -334,10 +371,10 @@ static void test4(TALLOC_CTX *mem_ctx, const char *pidfile,
 		assert(ev != NULL);
 
 		ret = sock_daemon_setup(mem_ctx, "test4", "file:", "NOTICE",
-					pidfile, &test4_funcs, NULL, &sockd);
+					&test4_funcs, NULL, &sockd);
 		assert(ret == 0);
 
-		ret = sock_daemon_run(ev, sockd, -1);
+		ret = sock_daemon_run(ev, sockd, pidfile, false, false, -1);
 		assert(ret == 0);
 
 		exit(0);
@@ -353,6 +390,12 @@ static void test4(TALLOC_CTX *mem_ctx, const char *pidfile,
 	ret = stat(sockpath, &st);
 	assert(ret == -1);
 }
+
+/*
+ * test5
+ *
+ * Start daemon, multiple client connects, requests, disconnects
+ */
 
 #define TEST5_MAX_CLIENTS	10
 
@@ -611,7 +654,7 @@ static void test5(TALLOC_CTX *mem_ctx, const char *pidfile,
 		assert(ev != NULL);
 
 		ret = sock_daemon_setup(mem_ctx, "test5", "file:", "NOTICE",
-					pidfile, &test5_funcs, &fd[1], &sockd);
+					&test5_funcs, &fd[1], &sockd);
 		assert(ret == 0);
 
 		state.num_clients = 0;
@@ -620,7 +663,7 @@ static void test5(TALLOC_CTX *mem_ctx, const char *pidfile,
 					   &test5_client_funcs, &state);
 		assert(ret == 0);
 
-		ret = sock_daemon_run(ev, sockd, pid);
+		ret = sock_daemon_run(ev, sockd, pidfile, false, false, pid);
 		assert(ret == EINTR);
 
 		exit(0);
@@ -651,6 +694,12 @@ static void test5(TALLOC_CTX *mem_ctx, const char *pidfile,
 	ret = kill(pid_server, SIGTERM);
 	assert(ret == 0);
 }
+
+/*
+ * test6
+ *
+ * Start daemon, test client connects, requests, replies, disconnects
+ */
 
 struct test6_pkt {
 	uint32_t len;
@@ -910,7 +959,7 @@ static void test6(TALLOC_CTX *mem_ctx, const char *pidfile,
 		server_state.fd = fd[1];
 
 		ret = sock_daemon_setup(mem_ctx, "test6", "file:", "NOTICE",
-					pidfile, &test6_funcs, &server_state,
+					&test6_funcs, &server_state,
 					&sockd);
 		assert(ret == 0);
 
@@ -921,7 +970,7 @@ static void test6(TALLOC_CTX *mem_ctx, const char *pidfile,
 					   &test6_client_funcs, &server_state);
 		assert(ret == 0);
 
-		ret = sock_daemon_run(ev, sockd, pid);
+		ret = sock_daemon_run(ev, sockd, pidfile, false, false, pid);
 		assert(ret == 0);
 
 		exit(0);
@@ -939,6 +988,315 @@ static void test6(TALLOC_CTX *mem_ctx, const char *pidfile,
 
 	pid = wait(&ret);
 	assert(pid != -1);
+}
+
+/*
+ * test7
+ *
+ * Start daemon twice, confirm PID file contention
+ */
+
+static void test7(TALLOC_CTX *mem_ctx, const char *pidfile,
+		  const char *sockpath)
+{
+	struct stat st;
+	int fd[2];
+	pid_t pid, pid2;
+	int ret;
+	struct tevent_context *ev;
+	struct sock_daemon_context *sockd;
+	ssize_t n;
+
+	ret = pipe(fd);
+	assert(ret == 0);
+
+	pid = fork();
+	assert(pid != -1);
+
+	if (pid == 0) {
+		close(fd[0]);
+
+		ev = tevent_context_init(mem_ctx);
+		assert(ev != NULL);
+
+		/* Reuse test2 funcs for the startup synchronisation */
+		ret = sock_daemon_setup(mem_ctx, "test7", "file:", "NOTICE",
+					&test2_funcs, &fd[1], &sockd);
+		assert(ret == 0);
+
+		ret = sock_daemon_run(ev, sockd, pidfile, false, false, -1);
+		assert(ret == EINTR);
+
+		exit(0);
+	}
+
+	close(fd[1]);
+
+	n = read(fd[0], &ret, sizeof(ret));
+	assert(n == sizeof(ret));
+	assert(ret == 1);
+
+	ret = stat(pidfile, &st);
+	assert(ret == 0);
+	assert(S_ISREG(st.st_mode));
+
+	ev = tevent_context_init(mem_ctx);
+	assert(ev != NULL);
+
+	/* Reuse test2 funcs for the startup synchronisation */
+	ret = sock_daemon_setup(mem_ctx, "test7-parent", "file:", "NOTICE",
+				&test2_funcs, &fd[1], &sockd);
+	assert(ret == 0);
+
+	ret = sock_daemon_run(ev, sockd, pidfile, false, false, -1);
+	assert(ret == EEXIST);
+
+	ret = kill(pid, SIGTERM);
+	assert(ret == 0);
+
+	n = read(fd[0], &ret, sizeof(ret));
+	assert(n == sizeof(ret));
+	assert(ret == 3);
+
+	pid2 = waitpid(pid, &ret, 0);
+	assert(pid2 == pid);
+	assert(WEXITSTATUS(ret) == 0);
+
+	close(fd[0]);
+}
+
+/*
+ * test8
+ *
+ * Start daemon, confirm that create_session argument works as expected
+ */
+
+static void test8(TALLOC_CTX *mem_ctx, const char *pidfile,
+		  const char *sockpath)
+{
+	int fd[2];
+	pid_t pid, pid2, sid;
+	int ret;
+	struct tevent_context *ev;
+	struct sock_daemon_context *sockd;
+	ssize_t n;
+
+	ret = pipe(fd);
+	assert(ret == 0);
+
+	pid = fork();
+	assert(pid != -1);
+
+	if (pid == 0) {
+		close(fd[0]);
+
+		ev = tevent_context_init(mem_ctx);
+		assert(ev != NULL);
+
+		/* Reuse test2 funcs for the startup synchronisation */
+		ret = sock_daemon_setup(mem_ctx, "test8", "file:", "NOTICE",
+					&test2_funcs, &fd[1], &sockd);
+		assert(ret == 0);
+
+		ret = sock_daemon_run(ev, sockd, pidfile, false, false, -1);
+		assert(ret == EINTR);
+
+		exit(0);
+	}
+
+	close(fd[1]);
+
+	n = read(fd[0], &ret, sizeof(ret));
+	assert(n == sizeof(ret));
+	assert(ret == 1);
+
+	/* create_session false above, so pid != sid */
+	sid = getsid(pid);
+	assert(pid != sid);
+
+	ret = kill(pid, SIGTERM);
+	assert(ret == 0);
+
+	n = read(fd[0], &ret, sizeof(ret));
+	assert(n == sizeof(ret));
+	assert(ret == 3);
+
+	pid2 = waitpid(pid, &ret, 0);
+	assert(pid2 == pid);
+	assert(WEXITSTATUS(ret) == 0);
+
+	close(fd[0]);
+
+	ret = pipe(fd);
+	assert(ret == 0);
+
+	pid = fork();
+	assert(pid != -1);
+
+	if (pid == 0) {
+		close(fd[0]);
+
+		ev = tevent_context_init(mem_ctx);
+		assert(ev != NULL);
+
+		/* Reuse test2 funcs for the startup synchronisation */
+		ret = sock_daemon_setup(mem_ctx, "test8", "file:", "NOTICE",
+					&test2_funcs, &fd[1], &sockd);
+		assert(ret == 0);
+
+		ret = sock_daemon_run(ev, sockd, pidfile, false, true, -1);
+		assert(ret == EINTR);
+
+		exit(0);
+	}
+
+	close(fd[1]);
+
+	n = read(fd[0], &ret, sizeof(ret));
+	assert(n == sizeof(ret));
+	assert(ret == 1);
+
+	/* create_session true above, so pid == sid */
+	sid = getsid(pid);
+	assert(pid == sid);
+
+	ret = kill(pid, SIGTERM);
+	assert(ret == 0);
+
+	n = read(fd[0], &ret, sizeof(ret));
+	assert(n == sizeof(ret));
+	assert(ret == 3);
+
+	pid2 = waitpid(pid, &ret, 0);
+	assert(pid2 == pid);
+	assert(WEXITSTATUS(ret) == 0);
+
+	close(fd[0]);
+}
+
+/*
+ * test9
+ *
+ * Confirm that do_fork causes the daemon to be forked as a separate child
+ */
+
+static void test9(TALLOC_CTX *mem_ctx, const char *pidfile,
+		  const char *sockpath)
+{
+	int fd[2];
+	pid_t pid, pid2;
+	int ret;
+	struct tevent_context *ev;
+	struct sock_daemon_context *sockd;
+	ssize_t n;
+	int pidfile_fd;
+	char pidstr[20] = { 0 };
+	struct stat st;
+
+	ret = pipe(fd);
+	assert(ret == 0);
+
+	pid = fork();
+	assert(pid != -1);
+
+	if (pid == 0) {
+		close(fd[0]);
+
+		ev = tevent_context_init(mem_ctx);
+		assert(ev != NULL);
+
+		/* Reuse test2 funcs for the startup synchronisation */
+		ret = sock_daemon_setup(mem_ctx, "test9", "file:", "NOTICE",
+					&test2_funcs, &fd[1], &sockd);
+		assert(ret == 0);
+
+		ret = sock_daemon_run(ev, sockd, pidfile, false, false, -1);
+		assert(ret == EINTR);
+
+		exit(0);
+	}
+
+	close(fd[1]);
+
+	n = read(fd[0], &ret, sizeof(ret));
+	assert(n == sizeof(ret));
+	assert(ret == 1);
+
+	/* do_fork false above, so pid should be active */
+	ret = kill(pid, 0);
+	assert(ret == 0);
+
+	ret = kill(pid, SIGTERM);
+	assert(ret == 0);
+
+	n = read(fd[0], &ret, sizeof(ret));
+	assert(n == sizeof(ret));
+	assert(ret == 3);
+
+	pid2 = waitpid(pid, &ret, 0);
+	assert(pid2 == pid);
+	assert(WEXITSTATUS(ret) == 0);
+
+	close(fd[0]);
+
+	ret = pipe(fd);
+	assert(ret == 0);
+
+	pid = fork();
+	assert(pid != -1);
+
+	if (pid == 0) {
+		close(fd[0]);
+
+		ev = tevent_context_init(mem_ctx);
+		assert(ev != NULL);
+
+		/* Reuse test2 funcs for the startup synchronisation */
+		ret = sock_daemon_setup(mem_ctx, "test9", "file:", "NOTICE",
+					&test2_funcs, &fd[1], &sockd);
+		assert(ret == 0);
+
+		ret = sock_daemon_run(ev, sockd, pidfile, true, false, -1);
+		assert(ret == EINTR);
+
+		exit(0);
+	}
+
+	close(fd[1]);
+
+	n = read(fd[0], &ret, sizeof(ret));
+	assert(n == sizeof(ret));
+	assert(ret == 1);
+
+	/* do_fork true above, so pid should have exited */
+	pid2 = waitpid(pid, &ret, 0);
+	assert(pid2 == pid);
+	assert(WEXITSTATUS(ret) == 0);
+
+	pidfile_fd = open(pidfile, O_RDONLY, 0644);
+	assert(pidfile_fd != -1);
+	n = read(pidfile_fd, pidstr, sizeof(pidstr)-1);
+	assert(n != -1);
+	pid2 = (pid_t)atoi(pidstr);
+	assert(pid != pid2);
+
+	ret = kill(pid2, SIGTERM);
+	assert(ret == 0);
+
+	n = read(fd[0], &ret, sizeof(ret));
+	assert(n == sizeof(ret));
+	assert(ret == 3);
+
+	/*
+	 * pid2 isn't our child, so can't call waitpid().  kill(pid2, 0)
+	 * is unreliable - pid2 may have been recycled.  Above indicates
+	 * that the shutdown function was called, so just do 1 final
+	 * check to see if pidfile has been removed.
+	 */
+	ret = stat(sockpath, &st);
+	assert(ret == -1);
+
+	close(fd[0]);
 }
 
 int main(int argc, const char **argv)
@@ -982,6 +1340,18 @@ int main(int argc, const char **argv)
 
 	case 6:
 		test6(mem_ctx, pidfile, sockpath);
+		break;
+
+	case 7:
+		test7(mem_ctx, pidfile, sockpath);
+		break;
+
+	case 8:
+		test8(mem_ctx, pidfile, sockpath);
+		break;
+
+	case 9:
+		test9(mem_ctx, pidfile, sockpath);
 		break;
 
 	default:
