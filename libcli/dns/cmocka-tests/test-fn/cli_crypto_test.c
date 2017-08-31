@@ -31,11 +31,25 @@
 #include <cmocka.h>
 #include "libcli/dns/cli-fn/client_crypto.c"
 
+/* TSIG generation */
+#include "includes.h"
+#include "lib/crypto/hmacmd5.h"
+#include "libcli/util/ntstatus.h"
+#include "auth/auth.h"
+#include "auth/gensec/gensec.h"
+#include "lib/util/data_blob.h"
+#include "lib/util/time.h"
+#include "source4/dns_server/dns_server.h"
+#include "libcli/dns/libtsig.h"
+
+#undef DBGC_CLASS
+#define DBGC_CLASS DBGC_DNS
+
 
 /** test gss-tsig functionality **/
 
 /* helper struct functions */
-static struct dns_res_rec *test_record(void) {
+struct dns_res_rec *test_record(void) {
 
 	TALLOC_CTX *mem_ctx;
 	struct dns_res_rec *test_rec;
@@ -59,7 +73,7 @@ static struct dns_res_rec *test_record(void) {
 	return test_rec;
 };
 
-static struct dns_client_tkey *test_tkey_name(void) {
+struct dns_client_tkey *test_tkey_name(void) {
 	
 	struct dns_client_tkey *test_tkey = NULL;
 	test_tkey->name = "TEST_TKEY";
@@ -68,7 +82,7 @@ static struct dns_client_tkey *test_tkey_name(void) {
 };
 
 /* calls fail() if assertions are false */
-static void tkey_test(void **state)
+void tkey_test(void **state)
 {
 	struct dns_client_tkey_store *test_store;
 	const char *test_name = "TEST_TKEY";
@@ -89,7 +103,7 @@ static void tkey_test(void **state)
 }
 
 /* calls fail() if test_werr not in werr_set */
-static void gen_tsig_test(void **state)
+void gen_tsig_test(void **state)
 {
 	TALLOC_CTX *mem_ctx;
 	DATA_BLOB *in_test = {NULL, SIZE_MAX};
@@ -139,7 +153,6 @@ int main(void)
 {
 	/* tests structure */
 	const struct CMUnitTest tests[] = {
-		cmocka_unit_test(empty_sig_test),
 		cmocka_unit_test(tkey_test),
 		cmocka_unit_test(gen_tsig_test),
 	};
